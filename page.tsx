@@ -53,7 +53,7 @@ export default function LandingPage() {
         {/* CTA Buttons */}
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Button size="lg" className="bg-black text-white hover:bg-black/100">
-            <Link href="/signup">Test Your API</Link>
+            <Link href="/login">Test Your API</Link>
           </Button>
           <Button size="lg" className="text-black bg-transparent hover:bg-transparent focus:ring-0">
             Learn more
