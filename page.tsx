@@ -3,7 +3,7 @@ import { ExternalLink} from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { BackgroundBeams } from "@/components/ui/background-beams"
 import Link from "next/link";
-import { LoginForm } from "./components/login-form";
+
 export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 text-center relative overflow-hidden bg-white">
@@ -20,12 +20,12 @@ export default function LandingPage() {
             <ul className="flex space-x-4">
               <li>
             <Button asChild className="text-black font-bold bg-transparent hover:bg-transparent focus:ring-0">
-              <Link href="/login">Login</Link>
+              <Link href="/">Docs</Link>
             </Button>
               </li>
               <li>
                 <Button size="sm" className="bg-black text-white hover:bg-black/100">
-                  <Link href="/signup">Sign Up</Link>
+                  <Link href="/">Star</Link>
                 </Button>
               </li>
             </ul>
@@ -53,7 +53,7 @@ export default function LandingPage() {
         {/* CTA Buttons */}
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Button size="lg" className="bg-black text-white hover:bg-black/100">
-            <Link href="/login">Test Your API</Link>
+            <Link href="/security">Test Your API</Link>
           </Button>
           <Button size="lg" className="text-black bg-transparent hover:bg-transparent focus:ring-0">
             Learn more
