@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button"
 import { ExternalLink} from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { BackgroundBeams } from "@/components/ui/background-beams"
-import Link from "next/link";
+import Link from "next/link"
+import { TestApiButton } from "@/components/test-api-button"
+import { DemoButton } from "@/components/demo-button"
 
 export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 text-center relative overflow-hidden bg-white">
-      {/* Background Beams Effect */}
       <BackgroundBeams />
 
       <header className="fixed top-0 left-0 right-0 z-50 px-4">
@@ -24,9 +24,7 @@ export default function LandingPage() {
             </Button>
               </li>
               <li>
-                <Button size="sm" className="bg-black text-white hover:bg-black/100">
-                  <Link href="/">Star</Link>
-                </Button>
+                <DemoButton />
               </li>
             </ul>
           </nav>
@@ -52,13 +50,24 @@ export default function LandingPage() {
 
         {/* CTA Buttons */}
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <Button size="lg" className="bg-black text-white hover:bg-black/100">
-            <Link href="/security">Test Your API</Link>
-          </Button>
+          <TestApiButton />
           <Button size="lg" className="text-black bg-transparent hover:bg-transparent focus:ring-0">
             Learn more
             <ExternalLink className="ml-2 h-4 w-4" />
           </Button>
+        </div>
+
+        <br />
+
+        {/* Dashboard Preview */}
+        <div className="relative w-full max-w-7xl mx-auto mt-16">
+          <div className="w-full h-auto rounded-xl overflow-hidden shadow-2xl border border-black/10 scale-125">
+            <img
+              src="/dashboard.png"
+              alt="API Analysis Dashboard"
+              className="w-full h-auto"
+            />
+          </div>
         </div>
 
         {/* Technology Stack */}
@@ -79,11 +88,13 @@ export default function LandingPage() {
             </svg>
             </div>
             <div className="w-10 h-10 bg-black/5 rounded-lg flex items-center justify-center border border-black/10">
-            <svg xmlns="http://www.w3.org/2000/svg" height="14" width="12.25" viewBox="0 0 448 512"><path fill="#c0c0c0" d="M439.6 236.1L244 40.5a28.9 28.9 0 0 0 -40.8 0l-40.7 40.6 51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.2 199v121.9c25.3 12.5 22.3 41.9 9.1 55a34.3 34.3 0 0 1 -48.6 0c-17.6-17.6-11.1-46.9 11.3-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1a28.9 28.9 0 0 0 0 40.8l195.6 195.6a28.9 28.9 0 0 0 40.8 0l194.7-194.7a28.9 28.9 0 0 0 0-40.8z"/>
-            </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" height="14" width="12.25" viewBox="0 0 448 512">
+                <path fill="#c0c0c0" d="M439.6 236.1L244 40.5a28.9 28.9 0 0 0 -40.8 0l-40.7 40.6 51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.2 199v121.9c25.3 12.5 22.3 41.9 9.1 55a34.3 34.3 0 0 1 -48.6 0c-17.6-17.6-11.1-46.9 11.3-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1a28.9 28.9 0 0 0 0 40.8l195.6 195.6a28.9 28.9 0 0 0 40.8 0l194.7-194.7a28.9 28.9 0 0 0 0-40.8z"/>
+              </svg>
             </div>
           </div>
         </div>
+        <br />
       </div>
     </main>
   )

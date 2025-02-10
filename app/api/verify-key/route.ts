@@ -108,10 +108,21 @@ export async function POST(request: Request) {
       })
     }
 
-    // Success - clear attempt record and log
+    // Success - clear attempt record and set verification cookie
     SecurityStore.clearAttemptRecord(clientIp)
     console.log(`[Security] Successful verification from IP: ${clientIp}`)
-    return NextResponse.json({ success: true })
+    
+    const response = NextResponse.json({ success: true })
+    
+    // Set secure HTTP-only cookie that expires in 24 hours
+    response.cookies.set('securityVerified', 'true', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 // 24 hours
+    })
+    
+    return response
 
   } catch (error) {
     console.error(`[Security] Error verifying key:`, error)
