@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { AwaitedReactNode, JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal, useState } from "react"
 import { AppSidebar } from "../../components/app-sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { AlertTriangle, CheckCircle, Shield, Clock, Database, Loader2 } from "lucide-react"
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { generateGeminiDocumentationDirect } from "@/lib/ai-providers";
 
 export default function Page() {
   const [apiEndpoint, setApiEndpoint] = useState("")
@@ -24,6 +28,66 @@ export default function Page() {
   const [response, setResponse] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [requestBody, setRequestBody] = useState("")
+  const [aiProvider, setAiProvider] = useState("gemini")
+  const [documentation, setDocumentation] = useState<any>(null)
+  const [generatingDocs, setGeneratingDocs] = useState(false)
+
+  const analyzeEndpoint = (url: string) => {
+    const urlPattern = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
+    const securityIssues = [];
+    
+    if (!urlPattern.test(url)) {
+      securityIssues.push("Invalid URL format");
+    }
+    if (!url.startsWith('https://')) {
+      securityIssues.push("Not using HTTPS");
+    }
+    
+    return {
+      urlAnalysis: {
+        protocol: new URL(url).protocol,
+        hostname: new URL(url).hostname,
+        pathname: new URL(url).pathname,
+        isHttps: url.startsWith('https://'),
+      },
+      securityIssues
+    };
+  };
+
+  const analyzeHeaders = (headers: Record<string, string>) => {
+    const securityHeaders = {
+      'strict-transport-security': false,
+      'x-content-type-options': false,
+      'x-frame-options': false,
+      'x-xss-protection': false,
+      'content-security-policy': false,
+    };
+
+    const missingHeaders: string[] = [];
+    
+    Object.keys(securityHeaders).forEach(header => {
+      if (!headers[header.toLowerCase()]) {
+        missingHeaders.push(header);
+      }
+    });
+
+    return {
+      missingSecurityHeaders: missingHeaders,
+      hasSecurityHeaders: missingHeaders.length === 0,
+      cors: headers['access-control-allow-origin'] || 'Not specified',
+      contentType: headers['content-type'] || 'Not specified',
+      caching: headers['cache-control'] || 'Not specified',
+    };
+  };
+
+  const analyzeResponse = (response: any) => {
+    return {
+      size: new Blob([JSON.stringify(response)]).size,
+      hasError: response.error !== undefined,
+      fieldsCount: Object.keys(response).length,
+      dataType: Array.isArray(response) ? 'array' : typeof response,
+    };
+  };
 
   const analyzeApi = async () => {
     if (!apiEndpoint) {
@@ -34,6 +98,9 @@ export default function Page() {
     try {
       setLoading(true);
       setError(null);
+      
+      const startTime = performance.now();
+      const endpointAnalysis = analyzeEndpoint(apiEndpoint);
       
       const requestOptions: RequestInit = {
         method,
@@ -64,12 +131,34 @@ export default function Page() {
         data = await res.text();
       }
 
+      const endTime = performance.now();
+      const responseTime = endTime - startTime;
+      
+      const headerAnalysis = analyzeHeaders(Object.fromEntries(res.headers.entries()));
+      const responseAnalysis = analyzeResponse(data);
+      
       const analysis = {
         status: res.status,
         headers: Object.fromEntries(res.headers.entries()),
         data,
-        timing: performance.now(),
+        timing: responseTime,
         contentType: contentType,
+        security: {
+          ...headerAnalysis,
+          endpointAnalysis,
+        },
+        response: responseAnalysis,
+        metrics: {
+          responseTime,
+          size: responseAnalysis.size,
+          timestamp: new Date().toISOString(),
+        },
+        suggestions: [
+          ...endpointAnalysis.securityIssues,
+          ...headerAnalysis.missingSecurityHeaders.map(h => `Missing security header: ${h}`),
+          responseTime > 1000 ? "High response time" : null,
+          !contentType ? "Missing content type header" : null,
+        ].filter(Boolean),
       };
       
       setResponse(analysis);
@@ -78,6 +167,85 @@ export default function Page() {
       setResponse(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateDocumentation = async () => {
+    if (!response) return;
+    
+    try {
+      setGeneratingDocs(true);
+      
+      if (aiProvider === "gemini") {
+        try {
+          // Use our new direct API call function
+          const docResult = await generateGeminiDocumentationDirect(apiEndpoint, method, response);
+          setDocumentation(docResult);
+        } catch (error) {
+          console.error('Error calling Gemini API:', error);
+          setDocumentation({
+            content: "Failed to generate documentation with Gemini. Please check your API key or try again later.",
+            error: true,
+            provider: "Gemini API (Error)",
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } else if (aiProvider === "mock") {
+        // For development/testing without API keys
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        setDocumentation({
+          content: `# API Documentation for ${apiEndpoint}
+          
+## Endpoint: \`${apiEndpoint}\`
+Method: \`${method}\`
+
+## Description
+This endpoint allows you to retrieve data from the service.
+
+## Request Parameters
+No parameters required for this endpoint.
+
+## Response Structure
+\`\`\`json
+${JSON.stringify(response.data, null, 2)}
+\`\`\`
+
+## Example Usage
+
+### JavaScript
+\`\`\`javascript
+fetch('${apiEndpoint}')
+  .then(response => response.json())
+  .then(data => console.log(data));
+\`\`\`
+
+## Authentication
+No authentication detected for this endpoint.
+
+## Error Handling
+Standard HTTP status codes are used:
+- 200: Success
+- 400: Bad Request
+- 401: Unauthorized
+- 404: Not Found
+
+## Rate Limiting
+No explicit rate limiting detected.
+`,
+          provider: "Mock Provider (Demo)",
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error('Error generating documentation:', error);
+      setDocumentation({
+        content: "An error occurred while generating documentation. Please try again.",
+        error: true,
+        provider: "Error",
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      setGeneratingDocs(false);
     }
   };
 
@@ -205,15 +373,45 @@ export default function Page() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Analysis Overview</CardTitle>
-                    <CardDescription>AI-powered insights about your API</CardDescription>
+                    <CardDescription>Comprehensive API analysis results</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="rounded-lg border p-4">
+                    {response ? (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <h3 className="font-medium">Endpoint Info</h3>
+                            <p>Protocol: {response.security.endpointAnalysis.urlAnalysis.protocol}</p>
+                            <p>Host: {response.security.endpointAnalysis.urlAnalysis.hostname}</p>
+                            <p>Path: {response.security.endpointAnalysis.urlAnalysis.pathname}</p>
+                          </div>
+                          <div className="space-y-2">
+                            <h3 className="font-medium">Response Info</h3>
+                            <p>Status: {response.status}</p>
+                            <p>Size: {(response.response.size / 1024).toFixed(2)} KB</p>
+                            <p>Fields: {response.response.fieldsCount}</p>
+                          </div>
+                        </div>
+                        
+                        {response.suggestions.length > 0 && (
+                          <div className="mt-4">
+                            <h3 className="font-medium mb-2">Suggestions</h3>
+                            <ul className="space-y-2">
+                              {response.suggestions.map((suggestion: string | number | bigint | boolean | ReactElement<any, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<AwaitedReactNode> | null | undefined, i: Key | null | undefined) => (
+                                <li key={i} className="flex items-center gap-2 text-yellow-600">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  {suggestion}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
                       <p className="text-sm text-muted-foreground">
-                        Enter an API endpoint above to see AI-generated insights about its security,
-                        performance, and documentation quality.
+                        Enter an API endpoint above to see AI-generated insights.
                       </p>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -222,14 +420,43 @@ export default function Page() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Security Analysis</CardTitle>
-                    <CardDescription>Detailed security assessment</CardDescription>
+                    <CardDescription>Security headers and potential vulnerabilities</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="rounded-lg border p-4">
+                    {response ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <h3 className="font-medium mb-2">Security Headers</h3>
+                            <ul className="space-y-2">
+                              {Object.entries(response.security).map(([key, value]) => (
+                                key !== 'endpointAnalysis' && (
+                                  <li key={key} className="flex items-center gap-2">
+                                    {typeof value === 'boolean' ? (
+                                      value ? (
+                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                      ) : (
+                                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                      )
+                                    ) : null}
+                                    {key}: {String(value)}
+                                  </li>
+                                )
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h3 className="font-medium mb-2">CORS & Access</h3>
+                            <p>CORS Policy: {response.security.cors}</p>
+                            <p>Protocol: {response.security.endpointAnalysis.urlAnalysis.protocol}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
                       <p className="text-sm text-muted-foreground">
                         Security analysis will appear here after you analyze an endpoint.
                       </p>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -253,15 +480,88 @@ export default function Page() {
               <TabsContent value="documentation" className="m-0">
                 <Card>
                   <CardHeader>
-                    <CardTitle>AI-Generated Documentation</CardTitle>
-                    <CardDescription>Automated API documentation</CardDescription>
+                    <CardTitle className="flex justify-between items-center">
+                      <div>AI-Generated Documentation</div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={aiProvider}
+                          onValueChange={setAiProvider}
+                          disabled={generatingDocs}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Select AI Provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="gemini">Gemini AI</SelectItem>
+                            <SelectItem value="mock">Demo Provider</SelectItem>
+                            {/* You can add more providers here */}
+                          </SelectContent>
+                        </Select>
+                        
+                        <Button
+                          onClick={generateDocumentation}
+                          disabled={!response || generatingDocs}
+                          size="sm"
+                        >
+                          {generatingDocs ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Generating...
+                            </>
+                          ) : (
+                            "Generate Docs"
+                          )}
+                        </Button>
+                      </div>
+                    </CardTitle>
+                    <CardDescription>
+                      {documentation ? 
+                        `Generated using ${documentation.provider} on ${new Date(documentation.timestamp).toLocaleString()}` :
+                        "Generate API documentation powered by AI"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="rounded-lg border p-4">
-                      <p className="text-sm text-muted-foreground">
-                        AI-generated documentation will appear here after you analyze an endpoint.
-                      </p>
-                    </div>
+                    {documentation ? (
+                      <div className="rounded-lg border p-4 bg-muted/50 prose prose-sm max-w-none">
+                        {documentation.error ? (
+                          <div className="text-red-500">{documentation.content}</div>
+                        ) : (
+                          <div 
+                            className="markdown-body"
+                            dangerouslySetInnerHTML={{ __html: documentation.content
+                              .replace(/\n/g, '<br/>')
+                              .replace(/#{1,6} (.+)/g, '<h3>$1</h3>')
+                              .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>')
+                            }}
+                          />
+                        )}
+                      </div>
+                    ) : response ? (
+                      <div className="rounded-lg border p-4 flex flex-col items-center justify-center py-12">
+                        <p className="text-sm text-muted-foreground mb-4">
+                          API analyzed successfully. Generate documentation to see AI-powered insights.
+                        </p>
+                        <Button 
+                          onClick={generateDocumentation} 
+                          disabled={generatingDocs}
+                        >
+                          {generatingDocs ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Generating...
+                            </>
+                          ) : (
+                            "Generate Documentation"
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border p-4">
+                        <p className="text-sm text-muted-foreground">
+                          First analyze an API endpoint to generate documentation.
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
