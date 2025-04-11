@@ -7,7 +7,6 @@ export interface DocumentationResult {
   error?: boolean;
 }
 
-// Direct fetch implementation using the exact API format from the curl example
 export async function generateGeminiDocumentationDirect(
   apiEndpoint: string,
   method: string,
@@ -92,7 +91,6 @@ export async function generateGeminiDocumentationDirect(
   }
 }
 
-// Keep the original function as a fallback
 export async function generateGeminiDocumentation(
   apiEndpoint: string,
   method: string,
@@ -106,7 +104,6 @@ export async function generateGeminiDocumentation(
     }
 
     const genAI = new GoogleGenerativeAI(API_KEY);
-    // Updated to use gemini-2.0-flash model
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const prompt = `
