@@ -1,25 +1,22 @@
 "use client"
 
-import { AwaitedReactNode, JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal, useState } from "react"
+import { Key, ReactElement, JSXElementConstructor, ReactNode, ReactPortal, useState } from "react"
 import { AppSidebar } from "../../components/app-sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
+  Breadcrumb, BreadcrumbItem, BreadcrumbLink,
+  BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { AlertTriangle, CheckCircle, Shield, Clock, Database, Loader2 } from "lucide-react"
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { generateGeminiDocumentationDirect } from "@/lib/ai-providers";
+import { generateGeminiDocumentationDirect, generateChatResponse } from "@/lib/ai-providers"
+import { MarkdownRenderer } from '@/components/MarkdownRenderer'
+import { ChatSection } from '@/components/ChatSection'
 
 export default function Page() {
   const [apiEndpoint, setApiEndpoint] = useState("")
@@ -31,6 +28,9 @@ export default function Page() {
   const [aiProvider, setAiProvider] = useState("gemini")
   const [documentation, setDocumentation] = useState<any>(null)
   const [generatingDocs, setGeneratingDocs] = useState(false)
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string, timestamp: string }>>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [isChatVisible, setIsChatVisible] = useState(false);
 
   const analyzeEndpoint = (url: string) => {
     const urlPattern = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
@@ -249,6 +249,94 @@ No explicit rate limiting detected.
     }
   };
 
+  const handleChatMessage = async (message: string) => {
+    if (!response) {
+      setError("Please analyze an API endpoint first");
+      return;
+    }
+
+    try {
+      setChatLoading(true);
+      
+      // Add user message
+      const userMessage = {
+        role: 'user' as const,
+        content: message,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // Prepare comprehensive API context
+      const apiContext = {
+        endpoint: apiEndpoint,
+        method: method,
+        response: {
+          ...response,
+          securityScore: calculateSecurityScore(response),
+          performanceMetrics: {
+            responseTime: response.timing,
+            responseSize: response.response.size,
+            isPerformant: response.timing < 500, // threshold for good performance
+          },
+          securityIssues: response.suggestions.filter((s: string) => 
+            s.toLowerCase().includes('security') || 
+            s.toLowerCase().includes('header') ||
+            s.toLowerCase().includes('https')
+          ),
+          totalIssues: response.suggestions.length,
+          data: response.data,
+        }
+      };
+
+      // Use the chat-specific function with enhanced context
+      const result = await generateChatResponse(
+        apiEndpoint,
+        method,
+        apiContext,
+        message
+      );
+
+      // Add AI response
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: result.content,
+        timestamp: new Date().toISOString()
+      }]);
+  
+    } catch (error) {
+      console.error('Chat error:', error);
+      setError('Failed to generate response');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const calculateSecurityScore = (analysis: any) => {
+    if (!analysis) return 0;
+    
+    let score = 100;
+    const deductions = {
+      'Missing strict-transport-security': 15,
+      'Missing x-content-type-options': 10,
+      'Missing x-frame-options': 10,
+      'Missing x-xss-protection': 10,
+      'Missing content-security-policy': 15,
+      'Not using HTTPS': 20,
+      'High response time': 10,
+      'Missing content type header': 10
+    };
+
+    analysis.suggestions.forEach((suggestion: string) => {
+      Object.entries(deductions).forEach(([issue, points]) => {
+        if (suggestion.toLowerCase().includes(issue.toLowerCase())) {
+          score -= points;
+        }
+      });
+    });
+
+    return Math.max(0, score);
+  };
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -346,7 +434,15 @@ No explicit rate limiting detected.
                     <CardDescription>Overall security assessment</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">95/100</div>
+                    <div className={`text-2xl font-bold ${
+                      response ? (
+                        calculateSecurityScore(response) >= 80 ? 'text-green-600' :
+                        calculateSecurityScore(response) >= 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      ) : 'text-gray-400'
+                    }`}>
+                      {response ? `${calculateSecurityScore(response)}/100` : 'N/A'}
+                    </div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -355,7 +451,15 @@ No explicit rate limiting detected.
                     <CardDescription>Average API response time</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">124ms</div>
+                    <div className={`text-2xl font-bold ${
+                      response ? (
+                        response.timing < 200 ? 'text-green-600' :
+                        response.timing < 500 ? 'text-yellow-600' :
+                        'text-red-600'
+                      ) : 'text-gray-400'
+                    }`}>
+                      {response ? `${response.timing.toFixed(0)}ms` : 'N/A'}
+                    </div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -364,7 +468,15 @@ No explicit rate limiting detected.
                     <CardDescription>Potential improvements</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">3</div>
+                    <div className={`text-2xl font-bold ${
+                      response ? (
+                        response.suggestions.length === 0 ? 'text-green-600' :
+                        response.suggestions.length <= 3 ? 'text-yellow-600' :
+                        'text-red-600'
+                      ) : 'text-gray-400'
+                    }`}>
+                      {response ? response.suggestions.length : 'N/A'}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -397,7 +509,7 @@ No explicit rate limiting detected.
                           <div className="mt-4">
                             <h3 className="font-medium mb-2">Suggestions</h3>
                             <ul className="space-y-2">
-                              {response.suggestions.map((suggestion: string | number | bigint | boolean | ReactElement<any, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<AwaitedReactNode> | null | undefined, i: Key | null | undefined) => (
+                              {response.suggestions.map((suggestion: string, i: Key) => (
                                 <li key={i} className="flex items-center gap-2 text-yellow-600">
                                   <AlertTriangle className="h-4 w-4" />
                                   {suggestion}
@@ -522,18 +634,11 @@ No explicit rate limiting detected.
                   </CardHeader>
                   <CardContent>
                     {documentation ? (
-                      <div className="rounded-lg border p-4 bg-muted/50 prose prose-sm max-w-none">
+                      <div className="rounded-lg border p-4 bg-muted/50">
                         {documentation.error ? (
                           <div className="text-red-500">{documentation.content}</div>
                         ) : (
-                          <div 
-                            className="markdown-body"
-                            dangerouslySetInnerHTML={{ __html: documentation.content
-                              .replace(/\n/g, '<br/>')
-                              .replace(/#{1,6} (.+)/g, '<h3>$1</h3>')
-                              .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>')
-                            }}
-                          />
+                          <MarkdownRenderer content={documentation.content} />
                         )}
                       </div>
                     ) : response ? (
@@ -601,6 +706,27 @@ No explicit rate limiting detected.
           </Tabs>
         </div>
       </SidebarInset>
+
+      {/* Floating Chat */}
+      {response && (
+        <>
+          <Button
+            className="fixed bottom-4 right-4 z-40 shadow-lg"
+            onClick={() => setIsChatVisible(!isChatVisible)}
+            variant="default"
+          >
+            {isChatVisible ? "Hide Chat" : "Show Chat"}
+          </Button>
+
+          {isChatVisible && (
+            <ChatSection
+              messages={messages}
+              loading={chatLoading}
+              onSendMessage={handleChatMessage}
+            />
+          )}
+        </>
+      )}
     </SidebarProvider>
-  )
+  );
 }
